@@ -40,6 +40,7 @@ const LABEL_PRINT_OPTIONS = [
   { count: 24, columns: 3, rows: 8, qrSizeMm: 22 },
   { count: 30, columns: 3, rows: 10, qrSizeMm: 18 },
 ] as const;
+const PRINT_FRAME_ID = 'duka-langu-qr-label-print-frame';
 
 function escapeHtml(value: string) {
   return value
@@ -48,6 +49,57 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function printHtmlInFrame(html: string, onError: () => void) {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    onError();
+    return;
+  }
+
+  document.getElementById(PRINT_FRAME_ID)?.remove();
+
+  const frame = document.createElement('iframe');
+  frame.id = PRINT_FRAME_ID;
+  frame.title = 'QR label print sheet';
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '1px';
+  frame.style.height = '1px';
+  frame.style.opacity = '0';
+  frame.style.border = '0';
+  frame.style.pointerEvents = 'none';
+
+  frame.onload = () => {
+    const frameWindow = frame.contentWindow;
+    const frameDocument = frame.contentDocument;
+    if (!frameWindow || !frameDocument) {
+      onError();
+      return;
+    }
+
+    const imageLoads = Array.from(frameDocument.images).map((image) => {
+      if (image.complete && image.naturalWidth > 0) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        image.addEventListener('load', () => resolve(), { once: true });
+        image.addEventListener('error', () => resolve(), { once: true });
+      });
+    });
+
+    Promise.all(imageLoads)
+      .then(() => {
+        window.setTimeout(() => {
+          frameWindow.focus();
+          frameWindow.print();
+          window.setTimeout(() => frame.remove(), 60000);
+        }, 350);
+      })
+      .catch(onError);
+  };
+
+  document.body.appendChild(frame);
+  frame.srcdoc = html;
 }
 
 function previewProductById(productId: string, branchId: string): Product | null {
@@ -171,14 +223,7 @@ export default function ProductDetailScreen() {
           </div>
         </section>
       `).join('');
-      const printWindow = window.open('', '_blank', 'width=900,height=700');
-      if (!printWindow) {
-        setNotice('Browser imezuia print window. Ruhusu pop-up au tumia print ya kawaida.');
-        window.print();
-        return;
-      }
-      printWindow.document.open();
-      printWindow.document.write(`<!doctype html>
+      const printDocument = `<!doctype html>
         <html>
           <head>
             <meta charset="utf-8" />
@@ -244,15 +289,11 @@ export default function ProductDetailScreen() {
           </head>
           <body>
             <main class="sheet">${labels}</main>
-            <script>
-              window.addEventListener('load', () => {
-                window.focus();
-                setTimeout(() => window.print(), 350);
-              });
-            </script>
           </body>
-        </html>`);
-      printWindow.document.close();
+        </html>`;
+      printHtmlInFrame(printDocument, () => {
+        setNotice('Print sheet imeshindwa kufunguka vizuri. Jaribu tena baada ya QR kuonekana.');
+      });
       return;
     }
     setNotice(`Print label: ${qrCodeValue}`);
