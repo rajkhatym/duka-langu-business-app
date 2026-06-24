@@ -35,6 +35,20 @@ import { userFacingError } from '@/lib/user-facing-errors';
 import type { Product, Purchase, Sale, StockMovement } from '@/types/database';
 
 const QR_PREFIX = 'DLBA:';
+const LABEL_PRINT_OPTIONS = [
+  { count: 12, columns: 3, rows: 4, qrSizeMm: 30 },
+  { count: 24, columns: 3, rows: 8, qrSizeMm: 22 },
+  { count: 30, columns: 3, rows: 10, qrSizeMm: 18 },
+] as const;
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function previewProductById(productId: string, branchId: string): Product | null {
   const match = productId.match(/^preview-product-(\d+)$/);
@@ -78,6 +92,7 @@ export default function ProductDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [labelPrintCount, setLabelPrintCount] = useState(24);
 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
@@ -140,7 +155,104 @@ export default function ProductDetailScreen() {
 
   const printQrLabel = () => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.print();
+      const layout = LABEL_PRINT_OPTIONS.find((option) => option.count === labelPrintCount) ?? LABEL_PRINT_OPTIONS[1];
+      const labelName = escapeHtml(name.trim() || product?.name || 'Bidhaa');
+      const labelSku = escapeHtml(sku.trim() || product?.sku || id);
+      const labelCode = escapeHtml(qrCodeValue);
+      const labelUnit = escapeHtml(unit.trim() || product?.unit || '');
+      const qrImage = escapeHtml(qrCodeUrl);
+      const labels = Array.from({ length: layout.count }, () => `
+        <section class="label">
+          <img src="${qrImage}" alt="${labelCode}" />
+          <div class="copy">
+            <strong>${labelName}</strong>
+            <span>SKU: ${labelSku}</span>
+            <small>${labelCode}${labelUnit ? ` · ${labelUnit}` : ''}</small>
+          </div>
+        </section>
+      `).join('');
+      const printWindow = window.open('', '_blank', 'width=900,height=700');
+      if (!printWindow) {
+        setNotice('Browser imezuia print window. Ruhusu pop-up au tumia print ya kawaida.');
+        window.print();
+        return;
+      }
+      printWindow.document.open();
+      printWindow.document.write(`<!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${labelName} - QR labels</title>
+            <style>
+              @page { size: A4; margin: 8mm; }
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                font-family: Arial, sans-serif;
+                color: #102A23;
+                background: #ffffff;
+              }
+              .sheet {
+                width: 194mm;
+                min-height: 281mm;
+                display: grid;
+                grid-template-columns: repeat(${layout.columns}, 1fr);
+                grid-template-rows: repeat(${layout.rows}, 1fr);
+                gap: 2mm;
+                padding: 0;
+              }
+              .label {
+                border: 0.35mm solid #CFE8DE;
+                border-radius: 2mm;
+                padding: 2mm;
+                display: flex;
+                align-items: center;
+                gap: 2mm;
+                overflow: hidden;
+                break-inside: avoid;
+              }
+              .label img {
+                width: ${layout.qrSizeMm}mm;
+                height: ${layout.qrSizeMm}mm;
+                flex: 0 0 auto;
+              }
+              .copy {
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 1mm;
+                line-height: 1.1;
+              }
+              strong {
+                font-size: ${layout.count >= 30 ? 7.5 : 8.5}pt;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+              span {
+                font-size: ${layout.count >= 30 ? 6.5 : 7.5}pt;
+                font-weight: 700;
+              }
+              small {
+                font-size: ${layout.count >= 30 ? 5.5 : 6.5}pt;
+                color: #44645B;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+            </style>
+          </head>
+          <body>
+            <main class="sheet">${labels}</main>
+            <script>
+              window.addEventListener('load', () => {
+                window.focus();
+                setTimeout(() => window.print(), 350);
+              });
+            </script>
+          </body>
+        </html>`);
+      printWindow.document.close();
       return;
     }
     setNotice(`Print label: ${qrCodeValue}`);
@@ -569,8 +681,28 @@ export default function ProductDetailScreen() {
               <Text style={styles.qrButtonText}>Copy QR code</Text>
             </Pressable>
             <Pressable style={[styles.qrButton, styles.qrButtonPrimary]} onPress={printQrLabel}>
-              <Text style={[styles.qrButtonText, styles.qrButtonTextPrimary]}>Print label</Text>
+              <Text style={[styles.qrButtonText, styles.qrButtonTextPrimary]}>Print A4 ({labelPrintCount})</Text>
             </Pressable>
+          </View>
+          <View style={styles.labelOptionRow}>
+            <Text style={styles.labelOptionTitle}>Labels kwenye A4</Text>
+            <View style={styles.labelOptions}>
+              {LABEL_PRINT_OPTIONS.map((option) => {
+                const selected = labelPrintCount === option.count;
+                return (
+                  <Pressable
+                    key={option.count}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${option.count} labels kwenye A4`}
+                    style={[styles.labelOption, selected && styles.labelOptionActive]}
+                    onPress={() => setLabelPrintCount(option.count)}>
+                    <Text style={[styles.labelOptionText, selected && styles.labelOptionTextActive]}>
+                      {option.count}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         </View>
 
@@ -1353,6 +1485,45 @@ const styles = StyleSheet.create({
   },
   qrButtonTextPrimary: {
     color: Colors.white,
+  },
+  labelOptionRow: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  labelOptionTitle: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  labelOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  labelOption: {
+    minWidth: 58,
+    minHeight: 34,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  labelOptionActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySoft,
+  },
+  labelOptionText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  labelOptionTextActive: {
+    color: Colors.primaryDark,
   },
   readinessPanel: {
     backgroundColor: Colors.surface,
