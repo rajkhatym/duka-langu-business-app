@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -40,7 +40,6 @@ const LABEL_PRINT_OPTIONS = [
   { count: 24, columns: 3, rows: 8, qrSizeMm: 22 },
   { count: 30, columns: 3, rows: 10, qrSizeMm: 18 },
 ] as const;
-const PRINT_FRAME_ID = 'duka-langu-qr-label-print-frame';
 
 function escapeHtml(value: string) {
   return value
@@ -49,57 +48,6 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function printHtmlInFrame(html: string, onError: () => void) {
-  if (typeof document === 'undefined' || typeof window === 'undefined') {
-    onError();
-    return;
-  }
-
-  document.getElementById(PRINT_FRAME_ID)?.remove();
-
-  const frame = document.createElement('iframe');
-  frame.id = PRINT_FRAME_ID;
-  frame.title = 'QR label print sheet';
-  frame.style.position = 'fixed';
-  frame.style.right = '0';
-  frame.style.bottom = '0';
-  frame.style.width = '1px';
-  frame.style.height = '1px';
-  frame.style.opacity = '0';
-  frame.style.border = '0';
-  frame.style.pointerEvents = 'none';
-
-  frame.onload = () => {
-    const frameWindow = frame.contentWindow;
-    const frameDocument = frame.contentDocument;
-    if (!frameWindow || !frameDocument) {
-      onError();
-      return;
-    }
-
-    const imageLoads = Array.from(frameDocument.images).map((image) => {
-      if (image.complete && image.naturalWidth > 0) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        image.addEventListener('load', () => resolve(), { once: true });
-        image.addEventListener('error', () => resolve(), { once: true });
-      });
-    });
-
-    Promise.all(imageLoads)
-      .then(() => {
-        window.setTimeout(() => {
-          frameWindow.focus();
-          frameWindow.print();
-          window.setTimeout(() => frame.remove(), 60000);
-        }, 350);
-      })
-      .catch(onError);
-  };
-
-  document.body.appendChild(frame);
-  frame.srcdoc = html;
 }
 
 function previewProductById(productId: string, branchId: string): Product | null {
@@ -145,6 +93,7 @@ export default function ProductDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [labelPrintCount, setLabelPrintCount] = useState(24);
+  const [printSheet, setPrintSheet] = useState<{ css: string; labelsHtml: string } | null>(null);
 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
@@ -205,6 +154,46 @@ export default function ProductDetailScreen() {
     await copyTextWithNotice(qrCodeValue, `QR code ${qrCodeValue} imenakiliwa.`, `QR code: ${qrCodeValue}`);
   };
 
+  useEffect(() => {
+    if (!printSheet || Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+
+    let cancelled = false;
+    let cleanupTimer: number | undefined;
+    const cleanup = () => {
+      window.removeEventListener('afterprint', cleanup);
+      setPrintSheet(null);
+    };
+
+    const startTimer = window.setTimeout(() => {
+      const printRoot = document.querySelector('[data-qr-print-root="true"]');
+      if (!printRoot) return;
+
+      const imageLoads = Array.from(printRoot.querySelectorAll('img')).map((image) => {
+        if (image.complete && image.naturalWidth > 0) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          image.addEventListener('load', () => resolve(), { once: true });
+          image.addEventListener('error', () => resolve(), { once: true });
+        });
+      });
+
+      Promise.all(imageLoads).then(() => {
+        if (cancelled) return;
+        window.addEventListener('afterprint', cleanup, { once: true });
+        window.print();
+        cleanupTimer = window.setTimeout(cleanup, 30000);
+      });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startTimer);
+      if (cleanupTimer) window.clearTimeout(cleanupTimer);
+      window.removeEventListener('afterprint', cleanup);
+    };
+  }, [printSheet]);
+
   const printQrLabel = () => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const layout = LABEL_PRINT_OPTIONS.find((option) => option.count === labelPrintCount) ?? LABEL_PRINT_OPTIONS[1];
@@ -223,77 +212,87 @@ export default function ProductDetailScreen() {
           </div>
         </section>
       `).join('');
-      const printDocument = `<!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>${labelName} - QR labels</title>
-            <style>
-              @page { size: A4; margin: 8mm; }
-              * { box-sizing: border-box; }
-              body {
-                margin: 0;
-                font-family: Arial, sans-serif;
-                color: #102A23;
-                background: #ffffff;
-              }
-              .sheet {
-                width: 194mm;
-                min-height: 281mm;
-                display: grid;
-                grid-template-columns: repeat(${layout.columns}, 1fr);
-                grid-template-rows: repeat(${layout.rows}, 1fr);
-                gap: 2mm;
-                padding: 0;
-              }
-              .label {
-                border: 0.35mm solid #CFE8DE;
-                border-radius: 2mm;
-                padding: 2mm;
-                display: flex;
-                align-items: center;
-                gap: 2mm;
-                overflow: hidden;
-                break-inside: avoid;
-              }
-              .label img {
-                width: ${layout.qrSizeMm}mm;
-                height: ${layout.qrSizeMm}mm;
-                flex: 0 0 auto;
-              }
-              .copy {
-                min-width: 0;
-                display: flex;
-                flex-direction: column;
-                gap: 1mm;
-                line-height: 1.1;
-              }
-              strong {
-                font-size: ${layout.count >= 30 ? 7.5 : 8.5}pt;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
-              span {
-                font-size: ${layout.count >= 30 ? 6.5 : 7.5}pt;
-                font-weight: 700;
-              }
-              small {
-                font-size: ${layout.count >= 30 ? 5.5 : 6.5}pt;
-                color: #44645B;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
-            </style>
-          </head>
-          <body>
-            <main class="sheet">${labels}</main>
-          </body>
-        </html>`;
-      printHtmlInFrame(printDocument, () => {
-        setNotice('Print sheet imeshindwa kufunguka vizuri. Jaribu tena baada ya QR kuonekana.');
-      });
+      const css = `
+        @page { size: A4; margin: 8mm; }
+        @media screen {
+          .qr-print-root {
+            position: fixed;
+            left: -10000px;
+            top: 0;
+            width: 194mm;
+            background: #ffffff;
+          }
+        }
+        @media print {
+          html, body {
+            margin: 0 !important;
+            background: #ffffff !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          .qr-print-root, .qr-print-root * {
+            visibility: visible !important;
+          }
+          .qr-print-root {
+            position: absolute !important;
+            left: 8mm !important;
+            top: 8mm !important;
+            width: 194mm !important;
+            min-height: 281mm !important;
+            display: grid !important;
+            grid-template-columns: repeat(${layout.columns}, 1fr) !important;
+            grid-template-rows: repeat(${layout.rows}, 1fr) !important;
+            gap: 2mm !important;
+            padding: 0 !important;
+            box-sizing: border-box !important;
+            font-family: Arial, sans-serif !important;
+            color: #102A23 !important;
+            background: #ffffff !important;
+          }
+          .qr-print-root .label {
+            border: 0.35mm solid #CFE8DE !important;
+            border-radius: 2mm !important;
+            padding: 2mm !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 2mm !important;
+            overflow: hidden !important;
+            break-inside: avoid !important;
+            box-sizing: border-box !important;
+          }
+          .qr-print-root img {
+            width: ${layout.qrSizeMm}mm !important;
+            height: ${layout.qrSizeMm}mm !important;
+            flex: 0 0 auto !important;
+          }
+          .qr-print-root .copy {
+            min-width: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 1mm !important;
+            line-height: 1.1 !important;
+          }
+          .qr-print-root strong {
+            font-size: ${layout.count >= 30 ? 7.5 : 8.5}pt !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+          .qr-print-root span {
+            font-size: ${layout.count >= 30 ? 6.5 : 7.5}pt !important;
+            font-weight: 700 !important;
+          }
+          .qr-print-root small {
+            font-size: ${layout.count >= 30 ? 5.5 : 6.5}pt !important;
+            color: #44645B !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+        }
+      `;
+      setPrintSheet({ css, labelsHtml: labels });
       return;
     }
     setNotice(`Print label: ${qrCodeValue}`);
@@ -652,9 +651,22 @@ export default function ProductDetailScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <>
+      {Platform.OS === 'web' && printSheet
+        ? createElement('style', {
+            dangerouslySetInnerHTML: { __html: printSheet.css },
+          })
+        : null}
+      {Platform.OS === 'web' && printSheet
+        ? createElement('main', {
+            className: 'qr-print-root',
+            'data-qr-print-root': 'true',
+            dangerouslySetInnerHTML: { __html: printSheet.labelsHtml },
+          })
+        : null}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.quantityBox}>
           <Text style={styles.quantityLabel}>Stock Iliyopo</Text>
@@ -1329,7 +1341,8 @@ export default function ProductDetailScreen() {
           <Button label="Futa Bidhaa" onPress={onDelete} variant="danger" style={styles.deleteButton} />
         ) : null}
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
