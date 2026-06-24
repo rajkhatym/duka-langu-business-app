@@ -32,6 +32,7 @@ function isPreviewHost() {
     window.location.hostname === 'localhost' ||
     window.location.hostname.endsWith('.netlify.app') ||
     window.location.hostname.endsWith('.vercel.app') ||
+    window.location.hostname.endsWith('.ondigitalocean.app') ||
     window.location.hostname.endsWith('.loca.lt') ||
     window.location.hostname.endsWith('.tunnelmole.net')
   );
