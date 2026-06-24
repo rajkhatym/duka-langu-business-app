@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -31,6 +32,8 @@ import { supabase } from '@/lib/supabase';
 import { isMissingCostPriceError } from '@/lib/supabase-errors';
 import { userFacingError } from '@/lib/user-facing-errors';
 import type { Product, Purchase, Sale, StockMovement } from '@/types/database';
+
+const QR_PREFIX = 'DLBA:';
 
 export default function ProductDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
@@ -76,6 +79,8 @@ export default function ProductDetailScreen() {
     if (numericCostPrice <= 0) return;
     setUnitPrice(String(Math.round(numericCostPrice * (1 + markup / 100))));
   };
+  const qrCodeValue = `${QR_PREFIX}${sku.trim() || product?.sku || id}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=${encodeURIComponent(qrCodeValue)}`;
 
   const ownerRouteParam = ownerPreviewMode ? { owner: 'preview' } : {};
   const ownerQuery = ownerPreviewMode ? '&owner=preview' : managerPreviewMode ? '&manager=preview' : '';
@@ -100,6 +105,18 @@ export default function ProductDetailScreen() {
       return;
     }
     await copyTextWithNotice(sku.trim(), `SKU ${sku.trim()} imenakiliwa.`, `SKU: ${sku.trim()}`);
+  };
+
+  const copyQrCode = async () => {
+    await copyTextWithNotice(qrCodeValue, `QR code ${qrCodeValue} imenakiliwa.`, `QR code: ${qrCodeValue}`);
+  };
+
+  const printQrLabel = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.print();
+      return;
+    }
+    setNotice(`Print label: ${qrCodeValue}`);
   };
 
   const copyTextWithNotice = async (text: string, successMessage: string, fallbackMessage: string) => {
@@ -508,6 +525,24 @@ export default function ProductDetailScreen() {
               <Text style={styles.identityLabel}>Unit</Text>
               <Text style={styles.identityValue}>{unit.trim() || '-'}</Text>
             </View>
+          </View>
+        </View>
+
+        <View style={styles.qrPanel}>
+          <View style={styles.qrTop}>
+            <View style={styles.qrCopy}>
+              <Text style={styles.qrTitle}>QR ya bidhaa</Text>
+              <Text style={styles.qrSubtitle}>{qrCodeValue}</Text>
+            </View>
+            <Image source={{ uri: qrCodeUrl }} style={styles.qrImage} resizeMode="contain" />
+          </View>
+          <View style={styles.qrActions}>
+            <Pressable style={styles.qrButton} onPress={copyQrCode}>
+              <Text style={styles.qrButtonText}>Copy QR code</Text>
+            </Pressable>
+            <Pressable style={[styles.qrButton, styles.qrButtonPrimary]} onPress={printQrLabel}>
+              <Text style={[styles.qrButtonText, styles.qrButtonTextPrimary]}>Print label</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -1224,6 +1259,72 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
+  },
+  qrPanel: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.md,
+  },
+  qrTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  qrCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  qrTitle: {
+    color: Colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  qrSubtitle: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  qrImage: {
+    width: 116,
+    height: 116,
+    borderRadius: 8,
+    backgroundColor: Colors.white,
+  },
+  qrActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  qrButton: {
+    minHeight: 40,
+    minWidth: '47%',
+    flexGrow: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFE5D6',
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  qrButtonPrimary: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  qrButtonText: {
+    color: Colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  qrButtonTextPrimary: {
+    color: Colors.white,
   },
   readinessPanel: {
     backgroundColor: Colors.surface,

@@ -66,6 +66,7 @@ type StockAlert = {
 };
 
 const SALE_DRAFT_PREFIX = 'godown-sale-draft';
+const QR_PREFIX = 'DLBA:';
 const paymentMethods: { value: PaymentMethod; label: string }[] = [
   { value: 'cash', label: 'Cash' },
   { value: 'mpesa', label: 'M-Pesa' },
@@ -144,6 +145,16 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function codeFromScan(rawValue: string) {
+  const value = rawValue.trim();
+  return value.toUpperCase().startsWith(QR_PREFIX) ? value.slice(QR_PREFIX.length).trim() : value;
+}
+
+type BarcodeDetectionResult = { rawValue?: string };
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => {
+  detect: (source: HTMLVideoElement) => Promise<BarcodeDetectionResult[]>;
+};
+
 async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs = 5000): Promise<T> {
   return Promise.race([
     promise,
@@ -206,6 +217,9 @@ export default function NewSaleScreen() {
   const [handledRestockedAt, setHandledRestockedAt] = useState<string | null>(null);
   const [lastPreviewSale, setLastPreviewSale] = useState<LastPreviewSale | null>(null);
   const [checkoutPreviewOpen, setCheckoutPreviewOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanCode, setScanCode] = useState('');
+  const [scanStatus, setScanStatus] = useState<string | null>(null);
   const [, setDailySalesStats] = useState<DailySalesStats>({
     total: 0,
     profit: 0,
@@ -213,6 +227,9 @@ export default function NewSaleScreen() {
     transactionCount: 0,
   });
   const searchInputRef = useRef<TextInput>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const scannerStreamRef = useRef<MediaStream | null>(null);
+  const scannerStopRef = useRef(false);
   const productReturnQuery = isOwnerPreviewMode() ? 'returnTo=sales&owner=preview' : 'returnTo=sales';
   const focusSearchInput = useCallback(() => {
     setTimeout(() => searchInputRef.current?.focus(), 80);
@@ -579,6 +596,99 @@ export default function NewSaleScreen() {
     removeSaleDraft(selectedBranchId);
   };
 
+  const addScannedProduct = useCallback(
+    (rawValue: string) => {
+      const code = codeFromScan(rawValue);
+      const normalizedCode = normalizeProductLookup(code);
+      if (!normalizedCode) {
+        setScanStatus('Code haijasomeka. Jaribu tena au andika SKU.');
+        return false;
+      }
+      const matchedProduct = products.find((product) => {
+        return (
+          normalizeProductLookup(product.sku).includes(normalizedCode) ||
+          normalizeProductLookup(product.id) === normalizedCode ||
+          normalizeProductLookup(product.name).includes(normalizedCode)
+        );
+      });
+      if (!matchedProduct) {
+        setScanStatus(`Hakuna bidhaa yenye code: ${code}`);
+        setSearch(code);
+        return false;
+      }
+      setQuantity(matchedProduct, (quantities[matchedProduct.id] ?? 0) + 1);
+      setSearch(matchedProduct.name);
+      setScanCode('');
+      setScanStatus(`${matchedProduct.name} imeongezwa kwenye sale.`);
+      setNotice(`${matchedProduct.name} imeongezwa kwa QR/Barcode.`);
+      return true;
+    },
+    [products, quantities]
+  );
+
+  const stopScanner = useCallback(() => {
+    scannerStopRef.current = true;
+    scannerStreamRef.current?.getTracks().forEach((track) => track.stop());
+    scannerStreamRef.current = null;
+  }, []);
+
+  const closeScanner = useCallback(() => {
+    stopScanner();
+    setScanOpen(false);
+  }, [stopScanner]);
+
+  const startScanner = useCallback(async () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof navigator === 'undefined') {
+      setScanStatus('Scanner inapatikana kwenye browser yenye camera. Andika SKU hapa chini.');
+      return;
+    }
+    const BarcodeDetectorClass = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+    if (!BarcodeDetectorClass || !navigator.mediaDevices?.getUserMedia) {
+      setScanStatus('Browser hii haina QR scanner. Andika au paste SKU kwenye box hapa chini.');
+      return;
+    }
+
+    try {
+      scannerStopRef.current = false;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      scannerStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      const detector = new BarcodeDetectorClass({ formats: ['qr_code', 'code_128', 'ean_13', 'ean_8'] });
+      setScanStatus('Elekeza camera kwenye QR/Barcode ya bidhaa.');
+
+      const scanLoop = async () => {
+        if (scannerStopRef.current || !videoRef.current) return;
+        try {
+          const codes = await detector.detect(videoRef.current);
+          const rawValue = codes[0]?.rawValue;
+          if (rawValue && addScannedProduct(rawValue)) {
+            closeScanner();
+            return;
+          }
+        } catch {
+          setScanStatus('Camera imeshindwa kusoma code. Jaribu tena au andika SKU.');
+        }
+        window.setTimeout(scanLoop, 450);
+      };
+
+      scanLoop();
+    } catch {
+      setScanStatus('Camera haijaruhusiwa. Ruhusu camera au andika SKU hapa chini.');
+    }
+  }, [addScannedProduct, closeScanner]);
+
+  useEffect(() => {
+    if (!scanOpen) return;
+    startScanner();
+    return stopScanner;
+  }, [scanOpen, startScanner, stopScanner]);
+
   const undoLastPreviewSale = async () => {
     if (!lastPreviewSale) return;
     setLoading(true);
@@ -846,6 +956,16 @@ export default function NewSaleScreen() {
             value={search}
             onChangeText={setSearch}
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Scan QR au barcode ya bidhaa"
+            style={styles.scanButton}
+            onPress={() => {
+              setScanStatus(null);
+              setScanOpen(true);
+            }}>
+            <Text style={styles.scanButtonText}>Scan</Text>
+          </Pressable>
         </View>
 
         <ScrollView
@@ -1014,6 +1134,66 @@ export default function NewSaleScreen() {
             style={styles.checkoutSaveButton}
           />
         </View>
+
+        <Modal
+          visible={scanOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={closeScanner}>
+          <View style={styles.previewOverlay}>
+            <View style={styles.scanCard}>
+              <View style={styles.previewHeader}>
+                <View>
+                  <Text style={styles.previewEyebrow}>QR/Barcode scanner</Text>
+                  <Text style={styles.previewTitle}>Scan bidhaa</Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Funga scanner"
+                  style={styles.previewCloseButton}
+                  onPress={closeScanner}>
+                  <Text style={styles.previewCloseText}>X</Text>
+                </Pressable>
+              </View>
+              {Platform.OS === 'web' ? (
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  style={{
+                    width: '100%',
+                    minHeight: 220,
+                    borderRadius: 12,
+                    backgroundColor: '#102A23',
+                    objectFit: 'cover',
+                  }}
+                />
+              ) : (
+                <View style={styles.scanFallbackBox}>
+                  <Text style={styles.scanFallbackText}>Tumia browser yenye camera au andika SKU.</Text>
+                </View>
+              )}
+              {scanStatus ? <Text style={styles.scanStatus}>{scanStatus}</Text> : null}
+              <View style={styles.scanManualRow}>
+                <TextInput
+                  value={scanCode}
+                  onChangeText={setScanCode}
+                  placeholder="Andika/paste SKU au DLBA:SKU"
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.scanManualInput}
+                  autoCapitalize="characters"
+                />
+                <Pressable
+                  style={styles.scanManualButton}
+                  onPress={() => {
+                    if (addScannedProduct(scanCode)) closeScanner();
+                  }}>
+                  <Text style={styles.scanManualButtonText}>Ongeza</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={checkoutPreviewOpen}
@@ -1350,6 +1530,20 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 15,
     fontWeight: '500',
+  },
+  scanButton: {
+    minWidth: 58,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  scanButtonText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '600',
   },
   categoryScroll: {
     flexGrow: 0,
@@ -1960,6 +2154,72 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     padding: Spacing.md,
     ...cardShadow,
+  },
+  scanCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    padding: Spacing.md,
+    ...cardShadow,
+  },
+  scanFallbackBox: {
+    minHeight: 160,
+    borderRadius: 12,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  scanFallbackText: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  scanStatus: {
+    color: Colors.primaryDark,
+    backgroundColor: Colors.primarySoft,
+    borderWidth: 1,
+    borderColor: '#BFE5D6',
+    borderRadius: 10,
+    padding: Spacing.sm,
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: Spacing.md,
+  },
+  scanManualRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  scanManualInput: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    color: Colors.text,
+    paddingHorizontal: Spacing.md,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  scanManualButton: {
+    minHeight: 42,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  scanManualButtonText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '600',
   },
   previewHeader: {
     flexDirection: 'row',
