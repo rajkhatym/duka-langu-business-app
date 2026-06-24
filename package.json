@@ -38,7 +38,7 @@
   },
   "scripts": {
     "start": "expo start",
-    "build": "expo export -p web",
+    "build": "expo export -p web && node ./scripts/prepare-static-host.js",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",

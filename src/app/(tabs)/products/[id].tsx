@@ -17,7 +17,7 @@ import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
 import { Colors, Spacing } from '@/constants/colors';
 import { formatDateTime, formatQuantity } from '@/lib/format';
-import { isManagerPreviewMode, isOwnerPreviewMode, useAuth } from '@/lib/auth-context';
+import { isAnyPreviewMode, isManagerPreviewMode, isOwnerPreviewMode, useAuth } from '@/lib/auth-context';
 import { useBranch } from '@/lib/branch-context';
 import {
   applyLocalProductOverride,
@@ -28,12 +28,39 @@ import {
 import { getLocalPurchases } from '@/lib/local-purchases';
 import { getLocalReportSales } from '@/lib/local-report-sales';
 import { getLocalStockMovements } from '@/lib/local-stock-movements';
+import { setupDemoProducts } from '@/lib/setup-wizard';
 import { supabase } from '@/lib/supabase';
 import { isMissingCostPriceError } from '@/lib/supabase-errors';
 import { userFacingError } from '@/lib/user-facing-errors';
 import type { Product, Purchase, Sale, StockMovement } from '@/types/database';
 
 const QR_PREFIX = 'DLBA:';
+
+function previewProductById(productId: string, branchId: string): Product | null {
+  const match = productId.match(/^preview-product-(\d+)$/);
+  const index = match ? Number(match[1]) - 1 : -1;
+  const demoProduct = setupDemoProducts[index];
+  if (!demoProduct) return null;
+
+  return {
+    id: productId,
+    branch_id: branchId,
+    name: demoProduct.name,
+    sku: demoProduct.sku,
+    unit: demoProduct.unit,
+    category: demoProduct.category ?? null,
+    variant_size: null,
+    variant_color: null,
+    variant_weight: null,
+    warranty_months: demoProduct.warranty_months ?? null,
+    quantity: demoProduct.quantity,
+    reorder_level: demoProduct.reorder_level,
+    cost_price: demoProduct.cost_price ?? null,
+    unit_price: demoProduct.unit_price ?? null,
+    created_by: null,
+    created_at: new Date().toISOString(),
+  };
+}
 
 export default function ProductDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
@@ -262,7 +289,8 @@ export default function ProductDetailScreen() {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from('products').select('*').eq('id', id).single();
-      const p = applyLocalProductOverride((data as Product | null) ?? null);
+      const fallbackProduct = isAnyPreviewMode() ? previewProductById(id, selectedBranchId) : null;
+      const p = applyLocalProductOverride((data as Product | null) ?? fallbackProduct);
       if (p) {
         setProduct(p);
         setName(p.name);
