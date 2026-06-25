@@ -1374,7 +1374,7 @@ export default function DashboardScreen() {
         <AiBusinessAssistant
           insights={aiInsights}
           reorderSuggestions={aiReorderSuggestions}
-          showAsk={isOwner}
+          showAsk={isAdmin}
           askQuestion={aiQuestion}
           askAnswer={aiAskAnswer}
           askExamples={aiAskExamples}
