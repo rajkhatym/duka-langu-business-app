@@ -1103,9 +1103,9 @@ export default function DashboardScreen() {
             <Text style={styles.sectionTitle}>Cashier Mode</Text>
             <Text style={styles.commandSubtitle}>Kazi za msingi za branch hii</Text>
             <View style={styles.cashierActionGrid}>
-              <QuickAction label="Uza" icon={HomeIcons.cart} fallback="⌑" href="/(tabs)/sales/new" tone="dark" />
-              <QuickAction label="Matumizi" icon={HomeIcons.wallet} fallback="▤" href="/(tabs)/finance/new-expense" tone="blue" />
-              <QuickAction label="Log Book" icon={HomeIcons.logBook} fallback="▥" href={storeLogBookHref} tone="teal" />
+              <QuickAction label="Uza" icon={HomeIcons.cart} fallback="⌑" href="/(tabs)/sales/new" tone="dark" wide />
+              <QuickAction label="Matumizi" icon={HomeIcons.wallet} fallback="▤" href="/(tabs)/finance/new-expense" tone="blue" wide />
+              <QuickAction label="Log Book" icon={HomeIcons.logBook} fallback="▥" href={storeLogBookHref} tone="teal" wide />
               <QuickAction
                 label="Mawinga"
                 icon={HomeIcons.people}
@@ -1113,6 +1113,7 @@ export default function DashboardScreen() {
                 href={'/(tabs)/finance/ledgers' as Href}
                 tone="green"
                 badge={mawingaCount}
+                wide
               />
             </View>
             <Pressable
@@ -1327,11 +1328,8 @@ export default function DashboardScreen() {
 
         <View style={styles.quickPanel}>
           <Text style={styles.sectionTitle}>Vitendo vya Haraka</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickGrid}>
-            <QuickAction label="Uza" icon={HomeIcons.cart} fallback="⌑" href="/(tabs)/sales/new" tone="dark" />
+          <View style={styles.quickGrid}>
+            <QuickAction label="Uza" icon={HomeIcons.cart} fallback="⌑" href="/(tabs)/sales/new" tone="dark" wide={!isAdmin} />
             <QuickAction
               label="Stock"
               icon={HomeIcons.stock}
@@ -1339,6 +1337,7 @@ export default function DashboardScreen() {
               href={'/(tabs)/movements' as Href}
               tone="green"
               badge={lowStock.length}
+              wide={!isAdmin}
             />
             <QuickAction
               label="Mawinga"
@@ -1347,8 +1346,16 @@ export default function DashboardScreen() {
               href={'/(tabs)/finance/ledgers' as Href}
               tone="green"
               badge={mawingaCount}
+              wide={!isAdmin}
             />
-            <QuickAction label="Matumizi" icon={HomeIcons.wallet} fallback="▤" href="/(tabs)/finance/new-expense" tone="blue" />
+            <QuickAction
+              label="Matumizi"
+              icon={HomeIcons.wallet}
+              fallback="▤"
+              href="/(tabs)/finance/new-expense"
+              tone="blue"
+              wide={!isAdmin}
+            />
             {isAdmin ? (
               <>
                 <QuickAction
@@ -1368,7 +1375,7 @@ export default function DashboardScreen() {
                 />
               </>
             ) : null}
-          </ScrollView>
+          </View>
         </View>
 
         <AiBusinessAssistant
@@ -2241,6 +2248,7 @@ function QuickAction({
   href,
   tone,
   badge = 0,
+  wide = false,
 }: {
   label: string;
   icon: AppIconName;
@@ -2248,6 +2256,7 @@ function QuickAction({
   href: Href;
   tone: 'dark' | 'green' | 'teal' | 'blue';
   badge?: number;
+  wide?: boolean;
 }) {
   const filled = tone === 'dark';
 
@@ -2255,6 +2264,7 @@ function QuickAction({
     <Pressable
       style={({ pressed }) => [
         styles.quickAction,
+        wide && styles.quickActionWide,
         filled ? styles.darkAction : styles.lightAction,
         tone === 'blue' && styles.lightActionBlue,
         pressed && styles.pressed,
@@ -2835,7 +2845,8 @@ const styles = StyleSheet.create({
   },
   cashierActionGrid: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   cashierBalanceCard: {
     borderWidth: 1,
@@ -5037,36 +5048,45 @@ const styles = StyleSheet.create({
   },
   quickGrid: {
     flexDirection: 'row',
-    gap: 5,
+    flexWrap: 'wrap',
+    gap: 8,
     marginTop: Spacing.sm,
-    paddingRight: 0,
   },
   quickAction: {
-    width: 56,
-    minHeight: 82,
-    borderRadius: 18,
+    flexBasis: '31.5%',
+    maxWidth: '31.5%',
+    minWidth: 96,
+    minHeight: 92,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 7,
     borderWidth: 1,
     borderColor: '#D8E9E1',
+    paddingHorizontal: 6,
+    paddingVertical: 10,
     shadowColor: Colors.primaryDark,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 5,
   },
+  quickActionWide: {
+    flexBasis: '48.5%',
+    maxWidth: '48.5%',
+    minWidth: 128,
+  },
   quickBadge: {
     position: 'absolute',
-    top: 5,
-    right: 3,
-    minWidth: 19,
-    height: 19,
-    borderRadius: 10,
+    top: 7,
+    right: 7,
+    minWidth: 21,
+    height: 21,
+    borderRadius: 11,
     backgroundColor: '#FF7900',
     color: Colors.white,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 21,
     fontSize: 10,
     fontWeight: '600',
     overflow: 'hidden',
@@ -5085,9 +5105,9 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   quickIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5108,10 +5128,11 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
   },
   quickLabel: {
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '500',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '600',
     textAlign: 'center',
+    flexShrink: 1,
   },
   quickLabelFilled: {
     color: Colors.white,
