@@ -150,6 +150,14 @@ function codeFromScan(rawValue: string) {
   return value.toUpperCase().startsWith(QR_PREFIX) ? value.slice(QR_PREFIX.length).trim() : value;
 }
 
+function productMatchesScan(product: Product, normalizedCode: string) {
+  return (
+    normalizeProductLookup(product.sku) === normalizedCode ||
+    normalizeProductLookup(product.id) === normalizedCode ||
+    normalizeProductLookup(product.name) === normalizedCode
+  );
+}
+
 type BarcodeDetectionResult = { rawValue?: string };
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => {
   detect: (source: HTMLVideoElement) => Promise<BarcodeDetectionResult[]>;
@@ -604,19 +612,21 @@ export default function NewSaleScreen() {
         setScanStatus('Code haijasomeka. Jaribu tena au andika SKU.');
         return false;
       }
-      const matchedProduct = products.find((product) => {
-        return (
-          normalizeProductLookup(product.sku).includes(normalizedCode) ||
-          normalizeProductLookup(product.id) === normalizedCode ||
-          normalizeProductLookup(product.name).includes(normalizedCode)
-        );
-      });
+      const matchedProduct = products.find((product) => productMatchesScan(product, normalizedCode));
       if (!matchedProduct) {
         setScanStatus(`Hakuna bidhaa yenye code: ${code}`);
         setSearch(code);
         return false;
       }
-      setQuantity(matchedProduct, (quantities[matchedProduct.id] ?? 0) + 1);
+      const currentQuantity = quantities[matchedProduct.id] ?? 0;
+      if (matchedProduct.quantity <= currentQuantity) {
+        setScanStatus(
+          `Stock haitoshi kwa ${matchedProduct.name}. Iliyopo: ${formatQuantity(matchedProduct.quantity)} ${matchedProduct.unit}.`
+        );
+        setSearch(matchedProduct.name);
+        return false;
+      }
+      setQuantity(matchedProduct, currentQuantity + 1);
       setSearch(matchedProduct.name);
       setScanCode('');
       setScanStatus(`${matchedProduct.name} imeongezwa kwenye sale.`);
@@ -951,7 +961,7 @@ export default function NewSaleScreen() {
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
-            placeholder="Tafuta bidhaa kwa jina..."
+            placeholder="Tafuta jina, SKU au scan QR..."
             placeholderTextColor={Colors.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -964,7 +974,7 @@ export default function NewSaleScreen() {
               setScanStatus(null);
               setScanOpen(true);
             }}>
-            <Text style={styles.scanButtonText}>Scan</Text>
+            <Text style={styles.scanButtonText}>Scan QR</Text>
           </Pressable>
         </View>
 
@@ -1184,6 +1194,8 @@ export default function NewSaleScreen() {
                   autoCapitalize="characters"
                 />
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Ongeza bidhaa iliyoscan"
                   style={styles.scanManualButton}
                   onPress={() => {
                     if (addScannedProduct(scanCode)) closeScanner();
@@ -1532,7 +1544,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   scanButton: {
-    minWidth: 58,
+    minWidth: 78,
     height: 38,
     borderRadius: 10,
     backgroundColor: Colors.primary,
