@@ -94,6 +94,7 @@ export default function ProductDetailScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [labelPrintCount, setLabelPrintCount] = useState(24);
   const [printSheet, setPrintSheet] = useState<{ css: string; labelsHtml: string } | null>(null);
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
@@ -194,15 +195,14 @@ export default function ProductDetailScreen() {
     };
   }, [printSheet]);
 
-  const printQrLabel = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const layout = LABEL_PRINT_OPTIONS.find((option) => option.count === labelPrintCount) ?? LABEL_PRINT_OPTIONS[1];
-      const labelName = escapeHtml(name.trim() || product?.name || 'Bidhaa');
-      const labelSku = escapeHtml(sku.trim() || product?.sku || id);
-      const labelCode = escapeHtml(qrCodeValue);
-      const labelUnit = escapeHtml(unit.trim() || product?.unit || '');
-      const qrImage = escapeHtml(qrCodeUrl);
-      const labels = Array.from({ length: layout.count }, () => `
+  const buildPrintSheet = (count = labelPrintCount) => {
+    const layout = LABEL_PRINT_OPTIONS.find((option) => option.count === count) ?? LABEL_PRINT_OPTIONS[1];
+    const labelName = escapeHtml(name.trim() || product?.name || 'Bidhaa');
+    const labelSku = escapeHtml(sku.trim() || product?.sku || id);
+    const labelCode = escapeHtml(qrCodeValue);
+    const labelUnit = escapeHtml(unit.trim() || product?.unit || '');
+    const qrImage = escapeHtml(qrCodeUrl);
+    const labels = Array.from({ length: layout.count }, () => `
         <section class="label">
           <img src="${qrImage}" alt="${labelCode}" />
           <div class="copy">
@@ -212,7 +212,7 @@ export default function ProductDetailScreen() {
           </div>
         </section>
       `).join('');
-      const css = `
+    const css = `
         @page { size: A4; margin: 8mm; }
         @media screen {
           .qr-print-root {
@@ -292,9 +292,20 @@ export default function ProductDetailScreen() {
           }
         }
       `;
-      setPrintSheet({ css, labelsHtml: labels });
+    return { css, labelsHtml: labels };
+  };
+
+  const openPrintPreview = () => {
+    setPrintPreviewOpen(true);
+  };
+
+  const printQrLabel = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      setPrintSheet(buildPrintSheet());
+      setPrintPreviewOpen(false);
       return;
     }
+    setPrintPreviewOpen(false);
     setNotice(`Print label: ${qrCodeValue}`);
   };
 
@@ -733,8 +744,12 @@ export default function ProductDetailScreen() {
             <Pressable style={styles.qrButton} onPress={copyQrCode}>
               <Text style={styles.qrButtonText}>Copy QR code</Text>
             </Pressable>
-            <Pressable style={[styles.qrButton, styles.qrButtonPrimary]} onPress={printQrLabel}>
-              <Text style={[styles.qrButtonText, styles.qrButtonTextPrimary]}>Print A4 ({labelPrintCount})</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Preview QR labels A4"
+              style={[styles.qrButton, styles.qrButtonPrimary]}
+              onPress={openPrintPreview}>
+              <Text style={[styles.qrButtonText, styles.qrButtonTextPrimary]}>Preview A4 ({labelPrintCount})</Text>
             </Pressable>
           </View>
           <View style={styles.labelOptionRow}>
@@ -1342,6 +1357,93 @@ export default function ProductDetailScreen() {
         ) : null}
       </ScrollView>
       </KeyboardAvoidingView>
+      {printPreviewOpen ? (
+        <View style={[styles.printPreviewOverlay, Platform.OS === 'web' && styles.printPreviewOverlayWeb]}>
+          <Pressable style={styles.printPreviewScrim} onPress={() => setPrintPreviewOpen(false)} />
+          <View style={styles.printPreviewPanel}>
+            <View style={styles.printPreviewHeader}>
+              <View style={styles.printPreviewTitleBlock}>
+                <Text style={styles.printPreviewTitle}>Preview ya QR Labels</Text>
+                <Text style={styles.printPreviewSubtitle}>
+                  Angalia mpangilio wa A4 kabla ya kufungua printer.
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Funga preview"
+                style={styles.printPreviewClose}
+                onPress={() => setPrintPreviewOpen(false)}>
+                <Text style={styles.printPreviewCloseText}>×</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.printPreviewOptions}>
+              {LABEL_PRINT_OPTIONS.map((option) => {
+                const selected = labelPrintCount === option.count;
+                return (
+                  <Pressable
+                    key={`preview-${option.count}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${option.count} labels preview`}
+                    style={[styles.printPreviewOption, selected && styles.printPreviewOptionActive]}
+                    onPress={() => setLabelPrintCount(option.count)}>
+                    <Text style={[styles.printPreviewOptionCount, selected && styles.printPreviewOptionCountActive]}>
+                      {option.count}
+                    </Text>
+                    <Text style={[styles.printPreviewOptionMeta, selected && styles.printPreviewOptionMetaActive]}>
+                      {option.columns} x {option.rows}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.printPreviewPage}>
+              {Array.from({ length: labelPrintCount }, (_, index) => (
+                <View
+                  key={`label-preview-${index}`}
+                  style={[
+                    styles.printPreviewLabel,
+                    labelPrintCount === 12 && styles.printPreviewLabelLarge,
+                    labelPrintCount === 30 && styles.printPreviewLabelCompact,
+                  ]}>
+                  <Image source={{ uri: qrCodeUrl }} style={styles.printPreviewQr} resizeMode="contain" />
+                  <View style={styles.printPreviewCopy}>
+                    <Text style={styles.printPreviewProductName} numberOfLines={1}>
+                      {name.trim() || product.name}
+                    </Text>
+                    <Text style={styles.printPreviewSku} numberOfLines={1}>
+                      SKU: {sku.trim() || product.sku || id}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.printPreviewFooter}>
+              <Text style={styles.printPreviewHint}>
+                {labelPrintCount} labels zitawekwa kwenye karatasi moja ya A4.
+              </Text>
+              <View style={styles.printPreviewActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Ghairi preview"
+                  style={styles.printPreviewCancel}
+                  onPress={() => setPrintPreviewOpen(false)}>
+                  <Text style={styles.printPreviewCancelText}>Ghairi</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Print QR labels"
+                  style={styles.printPreviewPrint}
+                  onPress={printQrLabel}>
+                  <Text style={styles.printPreviewPrintText}>Print</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </>
   );
 }
@@ -1539,6 +1641,205 @@ const styles = StyleSheet.create({
   },
   qrButtonTextPrimary: {
     color: Colors.white,
+  },
+  printPreviewOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  printPreviewOverlayWeb: {
+    position: 'fixed' as 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 9999,
+  },
+  printPreviewScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(16, 34, 28, 0.45)',
+  },
+  printPreviewPanel: {
+    width: '100%',
+    maxWidth: 720,
+    maxHeight: '94%',
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+    overflow: 'hidden',
+    shadowColor: Colors.primaryDark,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  printPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  printPreviewTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  printPreviewTitle: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  printPreviewSubtitle: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 3,
+  },
+  printPreviewClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: Colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  printPreviewCloseText: {
+    color: Colors.text,
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '600',
+  },
+  printPreviewOptions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  printPreviewOption: {
+    minHeight: 48,
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  printPreviewOptionActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySoft,
+  },
+  printPreviewOptionCount: {
+    color: Colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  printPreviewOptionCountActive: {
+    color: Colors.primaryDark,
+  },
+  printPreviewOptionMeta: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  printPreviewOptionMetaActive: {
+    color: Colors.primaryDark,
+  },
+  printPreviewPage: {
+    width: '100%',
+    aspectRatio: 0.707,
+    maxHeight: 360,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DDE8E3',
+    backgroundColor: Colors.white,
+    padding: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    overflow: 'hidden',
+  },
+  printPreviewLabel: {
+    flexBasis: '32%',
+    height: 26,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#CFE8DE',
+    backgroundColor: '#FBFFFD',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 3,
+  },
+  printPreviewLabelLarge: {
+    height: 52,
+  },
+  printPreviewLabelCompact: {
+    height: 21,
+  },
+  printPreviewQr: {
+    width: 18,
+    height: 18,
+    backgroundColor: Colors.white,
+  },
+  printPreviewCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  printPreviewProductName: {
+    color: Colors.text,
+    fontSize: 7,
+    fontWeight: '700',
+  },
+  printPreviewSku: {
+    color: Colors.textMuted,
+    fontSize: 6,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  printPreviewFooter: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: Spacing.md,
+    gap: Spacing.md,
+  },
+  printPreviewHint: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  printPreviewActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  printPreviewCancel: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  printPreviewCancelText: {
+    color: Colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  printPreviewPrint: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  printPreviewPrintText: {
+    color: Colors.white,
+    fontSize: 13,
+    fontWeight: '700',
   },
   labelOptionRow: {
     borderTopWidth: 1,
