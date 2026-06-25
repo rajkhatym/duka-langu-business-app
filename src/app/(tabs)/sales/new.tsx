@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextStyle,
   View,
 } from 'react-native';
 
@@ -73,6 +74,26 @@ const paymentMethods: { value: PaymentMethod; label: string }[] = [
   { value: 'bank', label: 'Bank' },
   { value: 'credit', label: 'Credit' },
 ];
+const webInputFocusReset: TextStyle & {
+  boxShadow?: string;
+  outlineColor?: string;
+  outlineStyle?: string;
+  outlineWidth?: number;
+} = (
+  Platform.OS === 'web'
+    ? {
+        boxShadow: 'none',
+        outlineColor: 'transparent',
+        outlineStyle: 'none',
+        outlineWidth: 0,
+      }
+    : {}
+) as TextStyle & {
+  boxShadow?: string;
+  outlineColor?: string;
+  outlineStyle?: string;
+  outlineWidth?: number;
+};
 
 function paymentStatus(total: number, paid: number): PaymentStatus {
   if (paid <= 0) return 'credit';
@@ -960,7 +981,7 @@ export default function NewSaleScreen() {
           <Text style={styles.searchIcon}>⌕</Text>
           <TextInput
             ref={searchInputRef}
-            style={styles.searchInput}
+            style={[styles.searchInput, webInputFocusReset]}
             placeholder="Tafuta jina, SKU au scan QR..."
             placeholderTextColor={Colors.textMuted}
             value={search}
@@ -1190,7 +1211,7 @@ export default function NewSaleScreen() {
                   onChangeText={setScanCode}
                   placeholder="Andika/paste SKU au DLBA:SKU"
                   placeholderTextColor={Colors.textMuted}
-                  style={styles.scanManualInput}
+                  style={[styles.scanManualInput, webInputFocusReset]}
                   autoCapitalize="characters"
                 />
                 <Pressable
