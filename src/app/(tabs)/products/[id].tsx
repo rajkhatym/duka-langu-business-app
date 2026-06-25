@@ -1377,70 +1377,76 @@ export default function ProductDetailScreen() {
               </Pressable>
             </View>
 
-            <View style={styles.printPreviewOptions}>
-              {LABEL_PRINT_OPTIONS.map((option) => {
-                const selected = labelPrintCount === option.count;
-                return (
-                  <Pressable
-                    key={`preview-${option.count}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${option.count} labels preview`}
-                    style={[styles.printPreviewOption, selected && styles.printPreviewOptionActive]}
-                    onPress={() => setLabelPrintCount(option.count)}>
-                    <Text style={[styles.printPreviewOptionCount, selected && styles.printPreviewOptionCountActive]}>
-                      {option.count}
-                    </Text>
-                    <Text style={[styles.printPreviewOptionMeta, selected && styles.printPreviewOptionMetaActive]}>
-                      {option.columns} x {option.rows}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={styles.printPreviewPage}>
-              {Array.from({ length: labelPrintCount }, (_, index) => (
-                <View
-                  key={`label-preview-${index}`}
-                  style={[
-                    styles.printPreviewLabel,
-                    labelPrintCount === 12 && styles.printPreviewLabelLarge,
-                    labelPrintCount === 30 && styles.printPreviewLabelCompact,
-                  ]}>
-                  <Image source={{ uri: qrCodeUrl }} style={styles.printPreviewQr} resizeMode="contain" />
-                  <View style={styles.printPreviewCopy}>
-                    <Text style={styles.printPreviewProductName} numberOfLines={1}>
-                      {name.trim() || product.name}
-                    </Text>
-                    <Text style={styles.printPreviewSku} numberOfLines={1}>
-                      SKU: {sku.trim() || product.sku || id}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.printPreviewFooter}>
-              <Text style={styles.printPreviewHint}>
-                {labelPrintCount} labels zitawekwa kwenye karatasi moja ya A4.
-              </Text>
-              <View style={styles.printPreviewActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Ghairi preview"
-                  style={styles.printPreviewCancel}
-                  onPress={() => setPrintPreviewOpen(false)}>
-                  <Text style={styles.printPreviewCancelText}>Ghairi</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Print QR labels"
-                  style={styles.printPreviewPrint}
-                  onPress={printQrLabel}>
-                  <Text style={styles.printPreviewPrintText}>Print</Text>
-                </Pressable>
+            <ScrollView
+              style={styles.printPreviewScroll}
+              contentContainerStyle={styles.printPreviewScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator>
+              <View style={styles.printPreviewOptions}>
+                {LABEL_PRINT_OPTIONS.map((option) => {
+                  const selected = labelPrintCount === option.count;
+                  return (
+                    <Pressable
+                      key={`preview-${option.count}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${option.count} labels preview`}
+                      style={[styles.printPreviewOption, selected && styles.printPreviewOptionActive]}
+                      onPress={() => setLabelPrintCount(option.count)}>
+                      <Text style={[styles.printPreviewOptionCount, selected && styles.printPreviewOptionCountActive]}>
+                        {option.count}
+                      </Text>
+                      <Text style={[styles.printPreviewOptionMeta, selected && styles.printPreviewOptionMetaActive]}>
+                        {option.columns} x {option.rows}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-            </View>
+
+              <View style={styles.printPreviewPage}>
+                {Array.from({ length: labelPrintCount }, (_, index) => (
+                  <View
+                    key={`label-preview-${index}`}
+                    style={[
+                      styles.printPreviewLabel,
+                      labelPrintCount === 12 && styles.printPreviewLabelLarge,
+                      labelPrintCount === 30 && styles.printPreviewLabelCompact,
+                    ]}>
+                    <Image source={{ uri: qrCodeUrl }} style={styles.printPreviewQr} resizeMode="contain" />
+                    <View style={styles.printPreviewCopy}>
+                      <Text style={styles.printPreviewProductName} numberOfLines={1}>
+                        {name.trim() || product.name}
+                      </Text>
+                      <Text style={styles.printPreviewSku} numberOfLines={1}>
+                        SKU: {sku.trim() || product.sku || id}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.printPreviewFooter}>
+                <Text style={styles.printPreviewHint}>
+                  {labelPrintCount} labels zitawekwa kwenye karatasi moja ya A4.
+                </Text>
+                <View style={styles.printPreviewActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Ghairi preview"
+                    style={styles.printPreviewCancel}
+                    onPress={() => setPrintPreviewOpen(false)}>
+                    <Text style={styles.printPreviewCancelText}>Ghairi</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Print QR labels"
+                    style={styles.printPreviewPrint}
+                    onPress={printQrLabel}>
+                    <Text style={styles.printPreviewPrintText}>Print</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </ScrollView>
           </View>
         </View>
       ) : null}
@@ -1647,6 +1653,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.lg,
+    zIndex: 2147483647,
+    elevation: 24,
   },
   printPreviewOverlayWeb: {
     position: 'fixed' as 'absolute',
@@ -1654,7 +1662,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    zIndex: 9999,
+    zIndex: 2147483647,
+    paddingBottom: 96,
   },
   printPreviewScrim: {
     ...StyleSheet.absoluteFillObject,
@@ -1663,11 +1672,10 @@ const styles = StyleSheet.create({
   printPreviewPanel: {
     width: '100%',
     maxWidth: 720,
-    maxHeight: '94%',
+    maxHeight: '100%',
     borderRadius: 18,
     backgroundColor: Colors.surface,
     padding: Spacing.lg,
-    gap: Spacing.md,
     overflow: 'hidden',
     shadowColor: Colors.primaryDark,
     shadowOffset: { width: 0, height: 18 },
@@ -1680,6 +1688,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: Spacing.md,
+    marginBottom: Spacing.md,
   },
   printPreviewTitleBlock: {
     flex: 1,
@@ -1713,6 +1722,13 @@ const styles = StyleSheet.create({
   printPreviewOptions: {
     flexDirection: 'row',
     gap: Spacing.sm,
+  },
+  printPreviewScroll: {
+    flexShrink: 1,
+  },
+  printPreviewScrollContent: {
+    gap: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
   printPreviewOption: {
     minHeight: 48,
